@@ -27,18 +27,23 @@
 `define PREAMBLE_WIDTH 2			// Global parameter: Preamble of all flits is 2 bits wide
 `define NOC_FLIT_SIZE 34			// Global parameter: Flit width = ARCH_BITS + 2
 `define MSG_TYPE_WIDTH 5			// Global parameter: Message width within the header flit
-`define RESERVED_WIDTH 8
+`define RESERVED_WIDTH 8			// Global parameter: Reserved width within the header flit
+
+
+typedef enum logic [1:0] {
 
 // Burst Types
-parameter [1:0] XBURST_FIXED = 2'b00;
-parameter [1:0] XBURST_INCR  = 2'b01;
-parameter [1:0] XBURST_WRAP  = 2'b10;
+	XBURST_FIXED = 2'b00;
+	XBURST_INCR  = 2'b01;
+	XBURST_WRAP  = 2'b10;
 
 // Response Types
-parameter [1:0] XRESP_OKAY   = 2'b00;
-parameter [1:0] XRESP_EXOKAY = 2'b01;
-parameter [1:0] XRESP_SLVERR = 2'b10;
-parameter [1:0] XRESP_DECERR = 2'b11;
+	XRESP_OKAY   = 2'b00;
+	XRESP_EXOKAY = 2'b01;
+	XRESP_SLVERR = 2'b10;
+	XRESP_DECERR = 2'b11;
+
+} axi_ops;
 
 
 typedef struct {
@@ -48,19 +53,25 @@ typedef struct {
 	logic [	      		    2 : 0] state;
 	logic [			    7 : 0] count;
 	
+	logic	     			   ax_valid;
+	logic [`GLOB_PHYS_ADDR_BITS-1 : 0] ax_addr;
+	logic [			    7 : 0] ax_len;
+	logic [			    2 : 0] ax_size;
+	logic [			    2 : 0] ax_prot;
+
 	logic	     			   ar_valid;
 	logic [`GLOB_PHYS_ADDR_BITS-1 : 0] ar_addr;
 	logic [			    7 : 0] ar_len;
 	logic [			    2 : 0] ar_size;
 	logic [			    2 : 0] ar_prot;
 
+	logic		     r_ready;
+
 	logic	     			   aw_valid;
 	logic [`GLOB_PHYS_ADDR_BITS-1 : 0] aw_addr;
 	logic [			    7 : 0] aw_len;
 	logic [			    2 : 0] aw_size;
 	logic [			    2 : 0] aw_prot;
-
-	logic		     r_ready;
 
 	logic		     w_valid;
 	logic [`AXIDW-1 : 0] w_data;
@@ -70,7 +81,7 @@ typedef struct {
 	logic		     b_ready;
 
 
-} state_struct;
+} info_struct;
 
 module noc2aximst 
 
@@ -93,53 +104,53 @@ module noc2aximst
 
 	/* Read Address Channel */
 	
-	output logic				 AR_ID;
-	input  logic	 			 AR_READY;
-	output logic	     			 AR_VALID;
+	output logic				  AR_ID;
+	input  logic	 			  AR_READY;
+	output logic	     			  AR_VALID;
 	output logic [`GLOB_PHYS_ADDR_BITS-1 : 0] AR_ADDR;
-	output logic [			  7 : 0] AR_LEN;
-	output logic [			  2 : 0] AR_SIZE;
-	output logic    		  1 : 0] AR_BURST;
-	output logic 				 AR_LOCK;
+	output logic [			   7 : 0] AR_LEN;
+	output logic [			   2 : 0] AR_SIZE;
+	output axi_ops    		   1 : 0] AR_BURST;
+	output logic 				  AR_LOCK;
 	//AWCACHE
-	output logic [			  2 : 0] AR_PROT;
+	output logic [			   2 : 0] AR_PROT;
 	//ARQOS;
 	//AWREGION
 	//AWUSER
 	
 
 	/* Read Data Channel	*/
-	input  logic 		   R_ID;
-	input  logic		   R_VALID;
-	output logic		   R_READY;
+	input  logic 		    R_ID;
+	input  logic		    R_VALID;
+	output logic		    R_READY;
 	input  logic [`AXIDW-1 : 0] R_DATA;
-	input  logic [      1 : 0] R_RESP;
-	input  logic 		   R_LAST;
+	input  logic [       1 : 0] R_RESP;
+	input  logic 		    R_LAST;
 	//RUSER;
 
 	/* Write Address Channel */
 	
-	output logic 				 AW_ID;
-	input  logic				 AW_READY;
-	output logic				 AW_VALID;
+	output logic 				  AW_ID;
+	input  logic				  AW_READY;
+	output logic				  AW_VALID;
 	output logic [`GLOB_PHYS_ADDR_BITS-1 : 0] AW_ADDR;	
-	output logic [			  7 : 0] AW_LEN;
-	output logic [			  2 : 0] AW_SIZE;
-	output logic		 	  1 : 0] AW_BURST;
-	output logic 				 AW_LOCK;
+	output logic [			   7 : 0] AW_LEN;
+	output logic [			   2 : 0] AW_SIZE;
+	output logic		 	   1 : 0] AW_BURST;
+	output logic 				  AW_LOCK;
 	//AWCACHE
-	output logic [			  2 : 0] AW_PROT;
+	output logic [			   2 : 0] AW_PROT;
 	//AWQOS;
 	//AWREGION
 	//AWUSER
 	
 	/* Write Data Channel */
 
-	input  logic		   W_READY;
-	output logic		   W_VALID;
+	input  logic		    W_READY;
+	output logic		    W_VALID;
 	output logic [`AXIDW-1 : 0] W_DATA;
-	output logic [AWI-1   : 0] W_STRB;
-	output logic 		   W_LAST;
+	output logic [   AWI-1 : 0] W_STRB;
+	output logic 		    W_LAST;
 	//WUSER
 
 	/*Write Response Channel */
@@ -154,11 +165,11 @@ module noc2aximst
 	/*	NoC Interface	*/
 	output logic 	                        coherence_req_rdreq;
 	input  logic	[`NOC_FLIT_SIZE-1 : 0]	coherence_req_data_out;
-	input  logic			    	        coherence_req_empty;
+	input  logic			    	coherence_req_empty;
 
-	output logic				            coherence_rsp_snd_wrreq;
+	output logic				coherence_rsp_snd_wrreq;
 	output logic	[`NOC_FLIT_SIZE-1 : 0]  coherence_rsp_snd_data_in;
-	input  logic				            coherence_rsp_snd_full;
+	input  logic				coherence_rsp_snd_full;
 	
 
     );
@@ -197,42 +208,51 @@ endmodule
 
 	
 
-	logic state_struct v;
-	logic [2:0] current_state, next_state;
-	parameter receive_header = 2'b00;
-
-	logic signal narrow_coherence_req_empty;
-	logic narrow_coherence_req_data_out;
+	logic info_struct v;			// v:   auxiliary struct - to keep track of values combinationally
+	logic info_struct cs;			// r:   current state
+	logic info_struct ns;			// rin: next state
+	//logic [2:0] current_state, next_state;
+	
 
 	logic [`PREAMBLE_WIDTH-1:0] preamble;
 	logic sample_header;
-	logic [RESERVED_WIDTH-1 : 0] reserved_field_type;
+	logic [`RESERVED_WIDTH-1:0] reserved;
+
+	parameter RECEIVE_HEADER  = 3'b000;
+	parameter RECEIVE_ADDRESS = 3'b001;
+	parameter RECEIVE_LENGTH  = 3'b010;
+	parameter READ_REQUEST    = 3'b011;
+	parameter READ_WAIT       = 3'b100;
+	parameter SEND_HEADER     = 3'b101;
+	parameter SEND_DATA       = 3'b110;
 
 	always @(*) begin 
 		
+		v = cs;
+
+		reserved = 0;		
 		preamble = coherence_req_data_out[`NOC_FLIT_SIZE-1:`NOC_FLIT_SIZE-`PREAMBLE_WIDTH];
 		sample_header = 1'b0;
-    		narrow_coherence_req_rdreq	 = 1'b0;
-    		narrow_coherence_rsp_snd_data_in = 0;
-    		narrow_coherence_rsp_snd_wrreq   = 1'b0;
+		
+    		coherence_req_rdreq	  = 1'b0;
+    		coherence_rsp_snd_data_in = 0;
+    		coherence_rsp_snd_wrreq   = 1'b0;
 		
 		case (current_state)
 			RECEIVE_HEADER: begin
-				if (narrow_coherence_req_empty == 1'b0)begin
-					narrow_coherence_req_rdreq = 1'b1;
-					v.msg <= narrow_coherence_req_data_out [MaxSize : MaxSize -8]; //?? noc_flit_type
-					reserved <= narrow_coherence_req_data_out [MaxSize : MaxSize - 8]; // ??
-					//ASSUME AXITRAN = 0;
-					v.hprot <= reserved[3:0];
-					v.hsize_msb <= 1'b1;
-					sample_header <= 1'b1;
-					v.state <= RECEIVE_ADDERSS;
+				if (coherence_req_empty == 1'b0)begin
+					coherence_req_rdreq = 1'b1;
+					v.msg    <= coherence_req_data_out [`NOC_FLIT_SIZE-`PREAMBLE_WIDTH-12-1:`NOC_FLIT_SIZE-`PREAMBLE_WIDTH-12-`MSG_TYPE_WIDTH];
+					reserved <= coherence_req_data_out [`NOC_FLIT_SIZE-`PREAMBLE_WIDTH-12-`MSG_TYPE_WIDTH-1:`NOC_FLIT_SIZE-`PREAMBLE_WIDTH-12-`MSG_TYPE_WIDTH-`RESERVED_WIDTH];
+					v.ax_prot <= reserved[2:0];
+					sample_header <= 1'b1;		// TODO: Create header flit
+					v.state <= RECEIVE_ADDRESS;
 				end
 			end
 
-			RECEIVE_ADDERSS:begin
-				if (narrow_coherence_req_empty == 1'b0)begin
-					narrow_coherence_req_rdreq <= 1'b1;
+			RECEIVE_ADDRESS: begin
+				if (coherence_req_empty == 1'b0)begin
+					coherence_req_rdreq <= 1'b1;
 					v.addr <= narrow_coherence_req_data_out [GLOB_PHYS_ADDR_BITS - 1 : 0];
 					//IF check msg type r.msg
 					//Now we are only doing read
@@ -257,8 +277,8 @@ endmodule
 				end
 			end
 			SEND_HEADER    :begin
-				narrow_coherence_rsp_snd_data_in <= header_reg; //??
-            			narrow_coherence_rsp_snd_wrreq   <= '1';
+				coherence_rsp_snd_data_in <= header_reg; //??
+            			coherence_rsp_snd_wrreq   <= '1';
 				
 				//Increment
 				if (R_VALID == 1'b1) begin
@@ -294,12 +314,42 @@ endmodule
 
 	always @(posedge ACLK) begin
 		if (~ARESETn) begin
+
+			current_state <= RECEIVE_HEADER;
 			AR_VALID <= 0;	
 			AW_VALID <= 0;
 			W_VALID  <= 0;
 			
+
+			cs.flit     <= 0;
+			cs.msg      <= REQ_GETS_W;
+			cs.state    <= RECEIVE_HEADER
+			cs.count    <= 0;
+
+			cs.ar_valid <= 0;
+			cs.ar_addr  <= 0;
+			cs.ar_len   <= 0;
+			cs.ar_size  <= 0;
+			cs.ar_prot  <= 0;
+
+			cs.r_ready  <= 0;
+			
+			cs.aw_valid <= 0;
+			cs.aw_addr  <= 0;
+			cs.aw_len   <= 0;
+			cs.aw_size  <= 0;
+			cs.aw_prot  <= 0;
+
+			cs.w_valid  <= 0;
+			cs.w_data   <= 0;
+			cs.w_strb   <= 0;
+			cs.w_last   <= 0;
+
+			cs.b_ready  <= 0;
+
+
 		end else 
-			current_state <= next_state;
+			cs <= ns;
 			AR_VALID <= next_state.ar_valid;	
 
 	end
