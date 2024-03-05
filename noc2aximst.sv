@@ -27,6 +27,7 @@
 `define PREAMBLE_WIDTH 2			// Global parameter: Preamble of all flits is 2 bits wide
 `define NOC_FLIT_SIZE 34			// Global parameter: Flit width = ARCH_BITS + 2
 `define MSG_TYPE_WIDTH 5			// Global parameter: Message width within the header flit
+`define RESERVED_WIDTH 8
 
 // Burst Types
 parameter [1:0] XBURST_FIXED = 2'b00;
@@ -166,7 +167,7 @@ endmodule
 	localparam AWI = `AXIDW / 8;
 
 	// No support for atomic operations
-    assign AW_LOCK = 1'b0;
+    	assign AW_LOCK = 1'b0;
 	assign AR_LOCK = 1'b0;
 
 	// AxSIZE: Specifies the number of bytes to transfer in each data transfer (beat)
@@ -205,6 +206,7 @@ endmodule
 
 	logic [`PREAMBLE_WIDTH-1:0] preamble;
 	logic sample_header;
+	logic [RESERVED_WIDTH-1 : 0] reserved_field_type;
 
 	always @(*) begin 
 		
@@ -215,13 +217,72 @@ endmodule
     		narrow_coherence_rsp_snd_wrreq   = 1'b0;
 		
 		case (current_state)
-		
-			receive_header: begin
-				if (narrow_coherence_req_rdreq == 1b'0)begin
-					narrow_coherence_req_rdreq = 1b'1;
-					v.msg <= get_msg_type(NOC_FLIT_SIZE, narrow_coherence_req_data_out);
+			RECEIVE_HEADER: begin
+				if (narrow_coherence_req_empty == 1'b0)begin
+					narrow_coherence_req_rdreq = 1'b1;
+					v.msg <= narrow_coherence_req_data_out [MaxSize : MaxSize -8]; //?? noc_flit_type
+					reserved <= narrow_coherence_req_data_out [MaxSize : MaxSize - 8]; // ??
+					//ASSUME AXITRAN = 0;
+					v.hprot <= reserved[3:0];
+					v.hsize_msb <= 1'b1;
+					sample_header <= 1'b1;
+					v.state <= RECEIVE_ADDERSS;
 				end
 			end
+
+			RECEIVE_ADDERSS:begin
+				if (narrow_coherence_req_empty == 1'b0)begin
+					narrow_coherence_req_rdreq <= 1'b1;
+					v.addr <= narrow_coherence_req_data_out [GLOB_PHYS_ADDR_BITS - 1 : 0];
+					//IF check msg type r.msg
+					//Now we are only doing read
+					//Assume L2 and LLC is disabled 
+					if ( r.msg == AXI_RD ) begin
+						v.count <= cacheline;
+						v.state <= READ_REQUEST;
+					end
+			end
+			READ_REQUEST     :begin
+				v_hsize <= HSIZE_WORD;
+				AR_SIZE <= 2'b1; //??
+				AR_VALID <= 1'b1;
+				INCR <= ; //????
+				v.state <= READ_WAIT;
+			end
+			READ_WAIT        :begin
+				if ( AR_VALID == 1'b1 && BUS_GRANT <= 1'b1 )begin
+					AR_VALID <= 1'b0;
+					RREADY <= 1'b1;
+					v.state <= SEND_HEADER;
+				end
+			end
+			SEND_HEADER    :begin
+				narrow_coherence_rsp_snd_data_in <= header_reg; //??
+            			narrow_coherence_rsp_snd_wrreq   <= '1';
+				
+				//Increment
+				if (R_VALID == 1'b1) begin
+					v.addr <= r.addr + INCR ;
+					v.state <= SEND_DATA;
+					//SEND HEADER ??
+				end
+			end
+			SEND_DATA      :begin
+				if (R_VALID == 1'b1) begin
+					v.addr <= r.addr + INCR;
+					//v.count <= r.count - 1;
+					if ( R_LAST == 1'b1 )begin
+						last_read_flag <= 1'b1;					
+					end
+					else if ( R_LAST == 1'b1 ) begin
+						//narrow_coherence_rsp_snd_data_in <= PREAMBLE_TAIL & fix_endian(ahbmi.hrdata); ??
+              					v.state <= RECEIVE_HEADER;	
+					end
+				end
+			end
+			
+	
+			default:  v.state <= RECEIVE_HEADER;
         endcase
 
 
