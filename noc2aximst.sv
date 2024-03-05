@@ -18,6 +18,7 @@
 // Additional Comments:
 // 
 //////////////////////////////////////////////////////////////////////////////////
+#include "nocpackages.sv"
 
 `define cacheline 8				// Global parameter: Burst length when CPU is AHB (Leon3)
 `define ARCH_BITS 32				// Global parameter: AXI crossbar width
@@ -195,10 +196,12 @@ endmodule
 
 	
 
-
+	logic state_struct v;
 	logic [2:0] current_state, next_state;
 	parameter receive_header = 2'b00;
 
+	logic signal narrow_coherence_req_empty;
+	logic narrow_coherence_req_data_out;
 
 	logic [`PREAMBLE_WIDTH-1:0] preamble;
 	logic sample_header;
@@ -213,7 +216,12 @@ endmodule
 		
 		case (current_state)
 		
-			receive_header
+			receive_header: begin
+				if (narrow_coherence_req_rdreq == 1b'0)begin
+					narrow_coherence_req_rdreq = 1b'1;
+					v.msg <= get_msg_type(NOC_FLIT_SIZE, narrow_coherence_req_data_out);
+				end
+			end
         endcase
 
 
